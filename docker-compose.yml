@@ -1,0 +1,58 @@
+name: docker-registry
+services:
+  init-htpasswd:
+    image: httpd:2
+    command: >
+      sh -lc 'if [ ! -f /auth/htpasswd ]; then htpasswd -Bbn "${REGISTRY_USERNAME}" "${REGISTRY_PASSWORD}" > /auth/htpasswd; fi'
+    volumes:
+      - ./auth:/auth
+    environment:
+      REGISTRY_USERNAME: ${REGISTRY_USERNAME}
+      REGISTRY_PASSWORD: ${REGISTRY_PASSWORD}
+    restart: "no"
+    networks:
+      - registry-net
+
+  registry:
+    image: registry:2
+    restart: always
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: "Registry Realm"
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - registry-data:/var/lib/registry
+      - ./auth:/auth:ro
+    networks:
+      - registry-net
+    depends_on:
+      init-htpasswd:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN}
+      CADDY_EMAIL: ${CADDY_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - registry-net
+    depends_on:
+      registry:
+        condition: service_started
+
+networks:
+  registry-net:
+
+volumes:
+  registry-data:
+  caddy-data:
+  caddy-config:
